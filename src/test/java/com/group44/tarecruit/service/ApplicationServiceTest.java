@@ -15,6 +15,7 @@ import com.group44.tarecruit.model.UserAccount;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 
@@ -240,6 +241,124 @@ class ApplicationServiceTest {
     }
 
     @Test
+    void applyingRequiresCompletedProfileAndDoesNotCreateSideEffects() {
+        ApplicationRepository applicationRepository = new ApplicationRepository(tempDir.resolve("applications-profile-required.csv"));
+        JobRepository jobRepository = new JobRepository(tempDir.resolve("jobs-profile-required.csv"));
+        ProfileRepository profileRepository = new ProfileRepository(tempDir.resolve("profiles-profile-required.csv"));
+        UserRepository userRepository = new UserRepository(tempDir.resolve("users-profile-required.csv"));
+        NotificationRepository notificationRepository = new NotificationRepository(tempDir.resolve("notifications-profile-required.csv"));
+
+        jobRepository.saveAll(List.of(new JobPosting(
+                "job-1",
+                "Programming TA",
+                "CS101",
+                "Programming",
+                "Semester A",
+                "8",
+                "Java",
+                "Java",
+                "Support labs",
+                2
+        )));
+        userRepository.saveAll(List.of(
+                new UserAccount("ta-missing-profile", Role.APPLICANT, "Missing Profile", "missing@school.edu", "password123"),
+                new UserAccount("ta-incomplete", Role.APPLICANT, "Incomplete Profile", "incomplete@school.edu", "password123")
+        ));
+        profileRepository.saveAll(List.of(new ApplicantProfile(
+                "ta-incomplete",
+                "Incomplete Profile",
+                "",
+                "CS",
+                "Year 2",
+                "Java",
+                "Mon",
+                "3.8",
+                "",
+                "",
+                "",
+                "",
+                ""
+        )));
+
+        ApplicationService service = new ApplicationService(
+                applicationRepository,
+                jobRepository,
+                profileRepository,
+                userRepository,
+                new NotificationService(notificationRepository)
+        );
+
+        assertThrows(IllegalArgumentException.class, () -> service.applyForJob("job-1", "ta-missing-profile"));
+        assertThrows(IllegalArgumentException.class, () -> service.applyForJob("job-1", "ta-incomplete"));
+        assertTrue(applicationRepository.findAll().isEmpty());
+        assertTrue(notificationRepository.findAll().isEmpty());
+    }
+
+    @Test
+    void exportsApplicantsForSelectedJobToCsv() throws Exception {
+        ApplicationRepository applicationRepository = new ApplicationRepository(tempDir.resolve("applications-export-job.csv"));
+        JobRepository jobRepository = new JobRepository(tempDir.resolve("jobs-export-job.csv"));
+        ProfileRepository profileRepository = new ProfileRepository(tempDir.resolve("profiles-export-job.csv"));
+        UserRepository userRepository = new UserRepository(tempDir.resolve("users-export-job.csv"));
+        NotificationRepository notificationRepository = new NotificationRepository(tempDir.resolve("notifications-export-job.csv"));
+
+        jobRepository.saveAll(List.of(new JobPosting(
+                "job-1",
+                "Academic Writing TA",
+                "IS201",
+                "English for Academic Purposes",
+                "Semester A",
+                "4",
+                "Writing support, feedback literacy",
+                "Writing|Support",
+                "Support essays",
+                1
+        )));
+        userRepository.saveAll(List.of(new UserAccount("ta-1", Role.APPLICANT, "Amy Parker", "amy@school.edu", "password123")));
+        profileRepository.saveAll(List.of(new ApplicantProfile(
+                "ta-1",
+                "Amy Parker",
+                "20240001",
+                "BSc Software Engineering",
+                "Year 2",
+                "Writing, feedback",
+                "Fri AM",
+                "3.8",
+                "amy_cv.pdf",
+                "cv.pdf",
+                "",
+                "",
+                "2026-04-01T10:00:00"
+        )));
+        applicationRepository.saveAll(List.of(new JobApplication(
+                "app-1",
+                "job-1",
+                "ta-1",
+                ApplicationStatus.SHORTLISTED,
+                "2026-04-01T10:00:00",
+                "Strong writing profile.",
+                ""
+        )));
+
+        ApplicationService service = new ApplicationService(
+                applicationRepository,
+                jobRepository,
+                profileRepository,
+                userRepository,
+                new NotificationService(notificationRepository)
+        );
+
+        Path output = tempDir.resolve("writing-applicants.csv");
+        ApplicationService.ExportResult result = service.exportApplicantsForJob("job-1", output);
+        List<String> lines = Files.readAllLines(output);
+
+        assertEquals(1, result.rowCount());
+        assertTrue(lines.getFirst().contains("jobTitle,moduleCode,semester,applicantName"));
+        assertTrue(lines.get(1).contains("Academic Writing TA,IS201,Semester A,Amy Parker"));
+        assertTrue(lines.get(1).contains("Shortlisted"));
+    }
+
+    @Test
     void rejectingApplicantUpdatesStatusAndCreatesNotification() {
         ApplicationRepository applicationRepository = new ApplicationRepository(tempDir.resolve("applications-reject.csv"));
         JobRepository jobRepository = new JobRepository(tempDir.resolve("jobs-reject.csv"));
@@ -285,6 +404,57 @@ class ApplicationServiceTest {
         assertEquals("Stronger lab experience required.", updated.note());
         assertEquals(1, notificationRepository.findAll().size());
         assertThrows(IllegalArgumentException.class, () -> service.rejectApplicant("app-1", "Second rejection"));
+    }
+
+    @Test
+    void reopensRejectedApplicationForFurtherReview() {
+        ApplicationRepository applicationRepository = new ApplicationRepository(tempDir.resolve("applications-reopen.csv"));
+        JobRepository jobRepository = new JobRepository(tempDir.resolve("jobs-reopen.csv"));
+        ProfileRepository profileRepository = new ProfileRepository(tempDir.resolve("profiles-reopen.csv"));
+        UserRepository userRepository = new UserRepository(tempDir.resolve("users-reopen.csv"));
+        NotificationRepository notificationRepository = new NotificationRepository(tempDir.resolve("notifications-reopen.csv"));
+
+        jobRepository.saveAll(List.of(new JobPosting(
+                "job-1",
+                "Programming TA",
+                "CS101",
+                "Introduction to Programming",
+                "Semester A",
+                "8",
+                "Java basics; lab support",
+                "Java|Support",
+                "Help in labs",
+                2
+        )));
+        userRepository.saveAll(List.of(new UserAccount("ta-1", Role.APPLICANT, "Amy Parker", "amy@school.edu", "password123")));
+        profileRepository.saveAll(List.of(new ApplicantProfile("ta-1", "Amy Parker", "20240001", "CS", "Year 2", "Java", "Mon", "3.8", "", "", "", "", "")));
+        applicationRepository.saveAll(List.of(new JobApplication(
+                "app-1",
+                "job-1",
+                "ta-1",
+                ApplicationStatus.REJECTED,
+                "2026-04-01T10:00:00",
+                "Rejected by mistake.",
+                ""
+        )));
+
+        ApplicationService service = new ApplicationService(
+                applicationRepository,
+                jobRepository,
+                profileRepository,
+                userRepository,
+                new NotificationService(notificationRepository)
+        );
+
+        service.reopenApplication("app-1");
+
+        JobApplication reopened = applicationRepository.findById("app-1").orElseThrow();
+        assertEquals(ApplicationStatus.UNDER_REVIEW, reopened.status());
+        assertEquals("Application reopened for further review.", reopened.note());
+        assertEquals(1, notificationRepository.findAll().size());
+
+        service.shortlistApplicant("app-1", "Review continued.");
+        assertEquals(ApplicationStatus.SHORTLISTED, applicationRepository.findById("app-1").orElseThrow().status());
     }
 
     @Test
@@ -365,7 +535,7 @@ class ApplicationServiceTest {
                 new NotificationService(notificationRepository)
         );
 
-        service.scheduleInterview("app-1", "2026-05-10T09:00", "Bring portfolio examples.");
+        service.scheduleInterview("app-1", "2026-05-10T09：00", "Bring portfolio examples.");
 
         JobApplication updated = applicationRepository.findById("app-1").orElseThrow();
         assertEquals(ApplicationStatus.INTERVIEW_SCHEDULED, updated.status());
@@ -373,6 +543,166 @@ class ApplicationServiceTest {
         assertEquals(1, notificationRepository.findAll().size());
         assertThrows(IllegalArgumentException.class,
                 () -> service.scheduleInterview("app-2", "2026-05-10T09:00", "Conflict"));
+    }
+
+    @Test
+    void schedulingInterviewRejectsInvalidDateTimeWithoutChangingApplication() {
+        ApplicationRepository applicationRepository = new ApplicationRepository(tempDir.resolve("applications-invalid-interview.csv"));
+        JobRepository jobRepository = new JobRepository(tempDir.resolve("jobs-invalid-interview.csv"));
+        ProfileRepository profileRepository = new ProfileRepository(tempDir.resolve("profiles-invalid-interview.csv"));
+        UserRepository userRepository = new UserRepository(tempDir.resolve("users-invalid-interview.csv"));
+        NotificationRepository notificationRepository = new NotificationRepository(tempDir.resolve("notifications-invalid-interview.csv"));
+
+        jobRepository.saveAll(List.of(new JobPosting(
+                "job-1",
+                "Programming TA",
+                "CS101",
+                "Programming",
+                "Semester A",
+                "8",
+                "Java",
+                "Java",
+                "Support labs",
+                2
+        )));
+        userRepository.saveAll(List.of(new UserAccount("ta-1", Role.APPLICANT, "Amy Parker", "amy@school.edu", "password123")));
+        profileRepository.saveAll(List.of(new ApplicantProfile("ta-1", "Amy Parker", "20240001", "CS", "Year 2", "Java", "Mon", "3.8", "", "", "", "", "")));
+        applicationRepository.saveAll(List.of(new JobApplication(
+                "app-1",
+                "job-1",
+                "ta-1",
+                ApplicationStatus.SHORTLISTED,
+                "2026-04-01T10:00:00",
+                "Ready for scheduling.",
+                ""
+        )));
+
+        ApplicationService service = new ApplicationService(
+                applicationRepository,
+                jobRepository,
+                profileRepository,
+                userRepository,
+                new NotificationService(notificationRepository)
+        );
+
+        assertThrows(IllegalArgumentException.class, () -> service.scheduleInterview("app-1", "", "Blank time"));
+        assertThrows(IllegalArgumentException.class, () -> service.scheduleInterview("app-1", "2026-05-10 09:00", "Missing T"));
+        assertThrows(IllegalArgumentException.class, () -> service.scheduleInterview("app-1", "tomorrow", "Natural language"));
+        assertThrows(IllegalArgumentException.class, () -> service.scheduleInterview("app-1", "2026-99-99T09:00", "Invalid date"));
+
+        JobApplication unchanged = applicationRepository.findById("app-1").orElseThrow();
+        assertEquals(ApplicationStatus.SHORTLISTED, unchanged.status());
+        assertEquals("", unchanged.interviewAt());
+        assertEquals("Ready for scheduling.", unchanged.note());
+        assertTrue(notificationRepository.findAll().isEmpty());
+    }
+
+    @Test
+    void terminalApplicationStatesBlockFurtherOrganiserUpdates() {
+        ApplicationRepository applicationRepository = new ApplicationRepository(tempDir.resolve("applications-terminal-states.csv"));
+        JobRepository jobRepository = new JobRepository(tempDir.resolve("jobs-terminal-states.csv"));
+        ProfileRepository profileRepository = new ProfileRepository(tempDir.resolve("profiles-terminal-states.csv"));
+        UserRepository userRepository = new UserRepository(tempDir.resolve("users-terminal-states.csv"));
+        NotificationRepository notificationRepository = new NotificationRepository(tempDir.resolve("notifications-terminal-states.csv"));
+
+        jobRepository.saveAll(List.of(new JobPosting(
+                "job-1",
+                "Programming TA",
+                "CS101",
+                "Programming",
+                "Semester A",
+                "8",
+                "Java",
+                "Java",
+                "Support labs",
+                3
+        )));
+        userRepository.saveAll(List.of(
+                new UserAccount("ta-1", Role.APPLICANT, "Amy Parker", "amy@school.edu", "password123"),
+                new UserAccount("ta-2", Role.APPLICANT, "Bob Chen", "bob@school.edu", "password123"),
+                new UserAccount("ta-3", Role.APPLICANT, "Cara Li", "cara@school.edu", "password123")
+        ));
+        profileRepository.saveAll(List.of(
+                new ApplicantProfile("ta-1", "Amy Parker", "20240001", "CS", "Year 2", "Java", "Mon", "3.8", "", "", "", "", ""),
+                new ApplicantProfile("ta-2", "Bob Chen", "20240002", "CS", "Year 2", "Java", "Tue", "3.7", "", "", "", "", ""),
+                new ApplicantProfile("ta-3", "Cara Li", "20240003", "CS", "Year 2", "Java", "Wed", "3.6", "", "", "", "", "")
+        ));
+        applicationRepository.saveAll(List.of(
+                new JobApplication("app-selected", "job-1", "ta-1", ApplicationStatus.SELECTED, "2026-04-01T10:00:00", "Selected", ""),
+                new JobApplication("app-rejected", "job-1", "ta-2", ApplicationStatus.REJECTED, "2026-04-01T11:00:00", "Rejected", ""),
+                new JobApplication("app-withdrawn", "job-1", "ta-3", ApplicationStatus.WITHDRAWN, "2026-04-01T12:00:00", "Withdrawn", "")
+        ));
+
+        ApplicationService service = new ApplicationService(
+                applicationRepository,
+                jobRepository,
+                profileRepository,
+                userRepository,
+                new NotificationService(notificationRepository)
+        );
+
+        assertThrows(IllegalArgumentException.class, () -> service.shortlistApplicant("app-selected", "Try again"));
+        assertThrows(IllegalArgumentException.class, () -> service.rejectApplicant("app-selected", "Try again"));
+        assertThrows(IllegalArgumentException.class, () -> service.scheduleInterview("app-selected", "2026-05-10T09:00", "Try again"));
+        assertThrows(IllegalArgumentException.class, () -> service.selectApplicant("app-rejected"));
+        assertThrows(IllegalArgumentException.class, () -> service.scheduleInterview("app-rejected", "2026-05-10T09:00", "Try again"));
+        assertThrows(IllegalArgumentException.class, () -> service.shortlistApplicant("app-withdrawn", "Try again"));
+        assertThrows(IllegalArgumentException.class, () -> service.selectApplicant("app-withdrawn"));
+
+        assertEquals(ApplicationStatus.SELECTED, applicationRepository.findById("app-selected").orElseThrow().status());
+        assertEquals(ApplicationStatus.REJECTED, applicationRepository.findById("app-rejected").orElseThrow().status());
+        assertEquals(ApplicationStatus.WITHDRAWN, applicationRepository.findById("app-withdrawn").orElseThrow().status());
+        assertTrue(notificationRepository.findAll().isEmpty());
+    }
+
+    @Test
+    void cancelsScheduledInterviewAndNotifiesApplicant() {
+        ApplicationRepository applicationRepository = new ApplicationRepository(tempDir.resolve("applications-cancel-interview.csv"));
+        JobRepository jobRepository = new JobRepository(tempDir.resolve("jobs-cancel-interview.csv"));
+        ProfileRepository profileRepository = new ProfileRepository(tempDir.resolve("profiles-cancel-interview.csv"));
+        UserRepository userRepository = new UserRepository(tempDir.resolve("users-cancel-interview.csv"));
+        NotificationRepository notificationRepository = new NotificationRepository(tempDir.resolve("notifications-cancel-interview.csv"));
+
+        jobRepository.saveAll(List.of(new JobPosting(
+                "job-1",
+                "Programming TA",
+                "CS101",
+                "Programming",
+                "Semester A",
+                "8",
+                "Java",
+                "Java",
+                "Support labs",
+                2
+        )));
+        userRepository.saveAll(List.of(new UserAccount("ta-1", Role.APPLICANT, "Amy Parker", "amy@school.edu", "password123")));
+        profileRepository.saveAll(List.of(new ApplicantProfile("ta-1", "Amy Parker", "20240001", "CS", "Year 2", "Java", "Mon", "3.8", "", "", "", "", "")));
+        applicationRepository.saveAll(List.of(new JobApplication(
+                "app-1",
+                "job-1",
+                "ta-1",
+                ApplicationStatus.INTERVIEW_SCHEDULED,
+                "2026-04-01T10:00:00",
+                "Interview scheduled.",
+                "2026-05-10T09:00"
+        )));
+
+        ApplicationService service = new ApplicationService(
+                applicationRepository,
+                jobRepository,
+                profileRepository,
+                userRepository,
+                new NotificationService(notificationRepository)
+        );
+
+        service.cancelInterview("app-1");
+
+        JobApplication updated = applicationRepository.findById("app-1").orElseThrow();
+        assertEquals(ApplicationStatus.UNDER_REVIEW, updated.status());
+        assertEquals("", updated.interviewAt());
+        assertEquals("Interview cancelled. Your application is back under review.", updated.note());
+        assertEquals(1, notificationRepository.findAll().size());
+        assertThrows(IllegalArgumentException.class, () -> service.cancelInterview("app-1"));
     }
 
     @Test

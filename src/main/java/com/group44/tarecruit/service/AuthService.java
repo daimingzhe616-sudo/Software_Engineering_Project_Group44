@@ -9,6 +9,8 @@ import java.util.UUID;
 import java.util.regex.Pattern;
 
 public class AuthService {
+    private static final int MIN_PASSWORD_LENGTH = 6;
+    private static final int MAX_PASSWORD_LENGTH = 20;
     private static final Pattern EMAIL_PATTERN = Pattern.compile("^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$");
 
     private final UserRepository userRepository;
@@ -47,9 +49,7 @@ public class AuthService {
         if (!existing.password().equals(currentPassword)) {
             throw new IllegalArgumentException("Current password is incorrect.");
         }
-        if (newPassword == null || newPassword.length() < 6) {
-            throw new IllegalArgumentException("New password must contain at least 6 characters.");
-        }
+        validatePasswordLength(newPassword, "New password");
         if (!newPassword.equals(confirmPassword)) {
             throw new IllegalArgumentException("New passwords do not match.");
         }
@@ -72,11 +72,18 @@ public class AuthService {
         if (!EMAIL_PATTERN.matcher(email).matches()) {
             throw new IllegalArgumentException("Please enter a valid email address.");
         }
-        if (password.length() < 6) {
-            throw new IllegalArgumentException("Password must contain at least 6 characters.");
-        }
+        validatePasswordLength(password, "Password");
         if (!password.equals(confirmPassword)) {
             throw new IllegalArgumentException("Passwords do not match.");
+        }
+    }
+
+    private void validatePasswordLength(String password, String label) {
+        if (password == null || password.length() < MIN_PASSWORD_LENGTH) {
+            throw new IllegalArgumentException(label + " must contain at least " + MIN_PASSWORD_LENGTH + " characters.");
+        }
+        if (password.length() > MAX_PASSWORD_LENGTH) {
+            throw new IllegalArgumentException(label + " must contain no more than " + MAX_PASSWORD_LENGTH + " characters.");
         }
     }
 }

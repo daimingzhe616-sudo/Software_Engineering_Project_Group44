@@ -36,4 +36,17 @@ class AuthServiceTest {
         assertThrows(IllegalArgumentException.class, () ->
                 service.registerApplicant("New Student", "new@school.edu", "secret12", "secret13"));
     }
+
+    @Test
+    void rejectsPasswordsLongerThanTwentyCharacters() {
+        UserRepository repository = new UserRepository(tempDir.resolve("users.csv"));
+        repository.saveAll(java.util.List.of(new UserAccount("ta-1", Role.APPLICANT, "Amy", "amy@school.edu", "oldpass")));
+        AuthService service = new AuthService(repository);
+        String tooLongPassword = "abcdefghijklmnopqrstuvwxyz";
+
+        assertThrows(IllegalArgumentException.class, () ->
+                service.registerApplicant("New Student", "new@school.edu", tooLongPassword, tooLongPassword));
+        assertThrows(IllegalArgumentException.class, () ->
+                service.changePassword("ta-1", "oldpass", tooLongPassword, tooLongPassword));
+    }
 }

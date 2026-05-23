@@ -556,7 +556,7 @@ public class AnalyticsService {
             if (backupCandidate.isPresent()) {
                 ApplicantMatchInsight candidate = backupCandidate.get();
                 suggestions.add(new WorkloadSuggestion(
-                        "Open role",
+                        "Unfilled role",
                         job.title(),
                         remainingOpenings + " opening(s) still unfilled for " + job.semester(),
                         "Prioritise " + candidate.applicantName() + " next. They currently hold "
@@ -568,7 +568,7 @@ public class AnalyticsService {
                     ));
             } else {
                 suggestions.add(new WorkloadSuggestion(
-                        "Open role",
+                        "Unfilled role",
                         job.title(),
                         remainingOpenings + " opening(s) still unfilled for " + job.semester(),
                         "No suitable applicant pipeline is available yet. Consider reopening promotion for this role.",

@@ -10,6 +10,7 @@ import java.nio.file.Path;
 
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 
 class CvServiceTest {
     @TempDir
@@ -56,6 +57,29 @@ class CvServiceTest {
         Path cv = tempDir.resolve("resume.txt");
 
         assertThrows(IllegalArgumentException.class, () -> service.storeCv(cv));
+    }
+
+    @Test
+    void storesPdfCvWithOriginalNameAndUniqueTargetPath() throws Exception {
+        CvService service = new CvService(tempDir.resolve("uploads"));
+        Path cv = tempDir.resolve("resume.pdf");
+        Files.writeString(cv, "%PDF-1.4 fake content");
+
+        CvService.StoredCv first = service.storeCv(cv);
+        CvService.StoredCv second = service.storeCv(cv);
+
+        assertEquals("resume.pdf", first.originalFileName());
+        assertTrue(Files.exists(Path.of(first.storedPath())));
+        assertTrue(Files.exists(Path.of(second.storedPath())));
+        assertTrue(!first.storedPath().equals(second.storedPath()));
+    }
+
+    @Test
+    void wrapsMissingSourceFileAsStorageFailure() {
+        CvService service = new CvService(tempDir.resolve("uploads"));
+        Path missingCv = tempDir.resolve("missing.pdf");
+
+        assertThrows(IllegalStateException.class, () -> service.storeCv(missingCv));
     }
 
     @Test

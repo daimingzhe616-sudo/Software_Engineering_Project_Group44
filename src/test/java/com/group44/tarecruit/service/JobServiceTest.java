@@ -57,6 +57,82 @@ class JobServiceTest {
     }
 
     @Test
+    void rejectsInvalidHoursOpeningsAndEmptySkills() {
+        JobService service = new JobService(new JobRepository(tempDir.resolve("jobs-invalid-numbers.csv")));
+
+        assertThrows(IllegalArgumentException.class, () -> service.createJob(new JobPosting(
+                "",
+                "Programming TA",
+                "CS101",
+                "Introduction to Programming",
+                "Semester A",
+                "abc",
+                "Java basics",
+                "",
+                "Support first-year programming labs.",
+                2
+        )));
+        assertThrows(IllegalArgumentException.class, () -> service.createJob(new JobPosting(
+                "",
+                "Programming TA",
+                "CS101",
+                "Introduction to Programming",
+                "Semester A",
+                "0",
+                "Java basics",
+                "",
+                "Support first-year programming labs.",
+                2
+        )));
+        assertThrows(IllegalArgumentException.class, () -> service.createJob(new JobPosting(
+                "",
+                "Programming TA",
+                "CS101",
+                "Introduction to Programming",
+                "Semester A",
+                "8",
+                "Java basics",
+                "",
+                "Support first-year programming labs.",
+                0
+        )));
+        assertThrows(IllegalArgumentException.class, () -> service.createJob(new JobPosting(
+                "",
+                "Programming TA",
+                "CS101",
+                "Introduction to Programming",
+                "Semester A",
+                "8",
+                " , ; | ",
+                "",
+                "Support first-year programming labs.",
+                2
+        )));
+
+        assertTrue(service.getAllJobs().isEmpty());
+    }
+
+    @Test
+    void generatesTagsFromRequiredSkillsWhenTagsAreBlank() {
+        JobService service = new JobService(new JobRepository(tempDir.resolve("jobs-generated-tags.csv")));
+
+        JobPosting savedJob = service.createJob(new JobPosting(
+                "",
+                "Programming TA",
+                "CS101",
+                "Introduction to Programming",
+                "Semester A",
+                "8",
+                "Java basics; lab support; office hours",
+                "   ",
+                "Support first-year programming labs.",
+                2
+        ));
+
+        assertEquals("Java basics|lab support", savedJob.tags());
+    }
+
+    @Test
     void filtersJobsByQueryTagAndSemester() {
         JobRepository repository = new JobRepository(tempDir.resolve("jobs-filter.csv"));
         repository.saveAll(List.of(
