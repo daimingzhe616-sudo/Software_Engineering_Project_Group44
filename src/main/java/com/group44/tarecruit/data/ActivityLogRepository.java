@@ -7,6 +7,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 public class ActivityLogRepository {
+    private static final int MAX_LOG_ITEMS = 30;
     private static final List<String> HEADER = List.of(
             "id",
             "category",
@@ -51,7 +52,11 @@ public class ActivityLogRepository {
     }
 
     public void saveAll(List<ActivityLogItem> logItems) {
-        List<List<String>> rows = logItems.stream()
+        List<ActivityLogItem> retainedLogItems = logItems.stream()
+                .sorted((left, right) -> right.createdAt().compareTo(left.createdAt()))
+                .limit(MAX_LOG_ITEMS)
+                .toList();
+        List<List<String>> rows = retainedLogItems.stream()
                 .map(item -> List.of(
                         item.id(),
                         item.category(),

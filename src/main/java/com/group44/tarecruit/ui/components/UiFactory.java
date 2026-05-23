@@ -1,15 +1,19 @@
 package com.group44.tarecruit.ui.components;
 
 import javax.swing.BorderFactory;
+import javax.swing.Box;
 import javax.swing.JButton;
 import javax.swing.JComponent;
 import javax.swing.JLabel;
 import javax.swing.JPanel;
+import javax.swing.JPasswordField;
 import javax.swing.JScrollPane;
 import javax.swing.Scrollable;
 import javax.swing.JTextArea;
 import javax.swing.JTextField;
 import javax.swing.SwingConstants;
+import javax.swing.event.DocumentEvent;
+import javax.swing.event.DocumentListener;
 import javax.swing.text.AbstractDocument;
 import javax.swing.text.AttributeSet;
 import javax.swing.text.BadLocationException;
@@ -20,6 +24,7 @@ import java.awt.Component;
 import java.awt.Cursor;
 import java.awt.Dimension;
 import java.awt.FlowLayout;
+import java.awt.GridLayout;
 import java.awt.Rectangle;
 
 public final class UiFactory {
@@ -52,6 +57,17 @@ public final class UiFactory {
         label.setFont(Theme.SMALL_FONT);
         label.setForeground(Theme.SUBTLE_TEXT);
         return label;
+    }
+
+    public static JLabel validationLabel() {
+        JLabel label = mutedLabel("");
+        label.setPreferredSize(new Dimension(220, 18));
+        return label;
+    }
+
+    public static void setValidationMessage(JLabel label, String message, boolean error) {
+        label.setText(message == null ? "" : message);
+        label.setForeground(error ? new Color(174, 45, 45) : Theme.SUBTLE_TEXT);
     }
 
     public static JButton primaryButton(String text) {
@@ -93,6 +109,139 @@ public final class UiFactory {
                 BorderFactory.createEmptyBorder(7, 9, 7, 9)
         ));
         return field;
+    }
+
+    public static JPasswordField passwordField() {
+        JPasswordField field = new JPasswordField();
+        field.setFont(Theme.BODY_FONT);
+        field.setBorder(BorderFactory.createCompoundBorder(
+                BorderFactory.createLineBorder(Theme.BORDER, 1, true),
+                BorderFactory.createEmptyBorder(7, 9, 7, 9)
+        ));
+        return field;
+    }
+
+    public static JPanel passwordFieldWithToggle(JPasswordField field, String toggleText) {
+        JPanel panel = new JPanel(new BorderLayout(8, 0));
+        panel.setOpaque(false);
+        JButton toggleButton = lightButton(toggleText);
+        toggleButton.setPreferredSize(new Dimension(64, 34));
+        char echoChar = field.getEchoChar();
+        toggleButton.addActionListener(event -> {
+            boolean showing = field.getEchoChar() == 0;
+            field.setEchoChar(showing ? echoChar : (char) 0);
+            toggleButton.setText(showing ? toggleText : "Hide");
+        });
+        panel.add(field, BorderLayout.CENTER);
+        panel.add(toggleButton, BorderLayout.EAST);
+        return panel;
+    }
+
+    public static JLabel passwordStrengthLabel(JPasswordField field) {
+        JLabel label = mutedLabel("Password strength: empty");
+        field.getDocument().addDocumentListener(new DocumentListener() {
+            @Override
+            public void insertUpdate(DocumentEvent event) {
+                update();
+            }
+
+            @Override
+            public void removeUpdate(DocumentEvent event) {
+                update();
+            }
+
+            @Override
+            public void changedUpdate(DocumentEvent event) {
+                update();
+            }
+
+            private void update() {
+                String password = new String(field.getPassword());
+                label.setText("Password strength: " + passwordStrength(password).label());
+            }
+        });
+        return label;
+    }
+
+    public static JPanel passwordStrengthMeter(JPasswordField field) {
+        JPanel meter = new JPanel(new BorderLayout(10, 0));
+        meter.setOpaque(false);
+        JPanel bars = new JPanel(new GridLayout(1, 6, 3, 0));
+        bars.setOpaque(false);
+        JLabel[] segments = new JLabel[6];
+        for (int index = 0; index < segments.length; index++) {
+            JLabel segment = new JLabel();
+            segment.setOpaque(true);
+            segment.setBackground(Theme.BORDER);
+            segment.setPreferredSize(new Dimension(28, 10));
+            segments[index] = segment;
+            bars.add(segment);
+        }
+        JLabel label = mutedLabel("Password strength: empty");
+        meter.add(bars, BorderLayout.WEST);
+        meter.add(label, BorderLayout.CENTER);
+        meter.add(Box.createHorizontalGlue(), BorderLayout.EAST);
+
+        field.getDocument().addDocumentListener(new DocumentListener() {
+            @Override
+            public void insertUpdate(DocumentEvent event) {
+                update();
+            }
+
+            @Override
+            public void removeUpdate(DocumentEvent event) {
+                update();
+            }
+
+            @Override
+            public void changedUpdate(DocumentEvent event) {
+                update();
+            }
+
+            private void update() {
+                PasswordStrength strength = passwordStrength(new String(field.getPassword()));
+                label.setText("Password strength: " + strength.label());
+                for (int index = 0; index < segments.length; index++) {
+                    segments[index].setBackground(index < strength.activeSegments() ? strength.color() : Theme.BORDER);
+                }
+            }
+        });
+        return meter;
+    }
+
+    private static PasswordStrength passwordStrength(String password) {
+        if (password == null || password.isBlank()) {
+            return new PasswordStrength("empty", 0, Theme.BORDER);
+        }
+        int score = 0;
+        if (password.length() >= 6) {
+            score++;
+        }
+        if (password.length() >= 10) {
+            score++;
+        }
+        if (password.matches(".*[A-Z].*") && password.matches(".*[a-z].*")) {
+            score++;
+        }
+        if (password.matches(".*\\d.*")) {
+            score++;
+        }
+        if (password.matches(".*[^A-Za-z0-9].*")) {
+            score++;
+        }
+        if (password.length() < 6) {
+            return new PasswordStrength("too short", 1, new Color(224, 61, 61));
+        }
+        if (score <= 2) {
+            return new PasswordStrength("weak", 2, new Color(224, 61, 61));
+        }
+        if (score <= 4) {
+            return new PasswordStrength("medium", 4, Theme.WARNING);
+        }
+        return new PasswordStrength("strong", 6, Theme.SUCCESS);
+    }
+
+    private record PasswordStrength(String label, int activeSegments, Color color) {
     }
 
     public static JTextField numericTextField(int maxLength) {

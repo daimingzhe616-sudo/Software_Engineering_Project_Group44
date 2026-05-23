@@ -12,6 +12,9 @@ import javax.swing.JPasswordField;
 import javax.swing.JTextField;
 import javax.swing.JOptionPane;
 import javax.swing.JPanel;
+import javax.swing.BorderFactory;
+import javax.swing.event.DocumentEvent;
+import javax.swing.event.DocumentListener;
 import java.awt.BorderLayout;
 import java.awt.Dimension;
 import java.awt.GridLayout;
@@ -144,6 +147,10 @@ public class LoginPanel extends JPanel {
     }
 
     private JPanel labeledField(String labelText, JComponent field) {
+        return labeledField(labelText, field, null);
+    }
+
+    private JPanel labeledField(String labelText, JComponent field, JLabel validationLabel) {
         JPanel panel = new JPanel();
         panel.setOpaque(false);
         panel.setLayout(new BoxLayout(panel, BoxLayout.Y_AXIS));
@@ -156,6 +163,10 @@ public class LoginPanel extends JPanel {
         panel.add(Box.createVerticalStrut(8));
         UiFactory.fixedHeight(field, 36);
         panel.add(field);
+        if (validationLabel != null) {
+            panel.add(Box.createVerticalStrut(4));
+            panel.add(validationLabel);
+        }
         return panel;
     }
 
@@ -181,23 +192,71 @@ public class LoginPanel extends JPanel {
     private void showRegisterDialog() {
         JTextField nameField = UiFactory.textField();
         JTextField emailField = UiFactory.textField();
-        JPasswordField passwordField = new JPasswordField();
-        JPasswordField confirmField = new JPasswordField();
-        passwordField.setFont(Theme.BODY_FONT);
-        confirmField.setFont(Theme.BODY_FONT);
+        JPasswordField passwordField = UiFactory.passwordField();
+        JPasswordField confirmField = UiFactory.passwordField();
+        JLabel nameValidationLabel = UiFactory.validationLabel();
+        JLabel emailValidationLabel = UiFactory.validationLabel();
+        JLabel passwordValidationLabel = UiFactory.validationLabel();
+        JLabel confirmValidationLabel = UiFactory.validationLabel();
+        DocumentListener validationListener = new DocumentListener() {
+            @Override
+            public void insertUpdate(DocumentEvent event) {
+                updateRegistrationValidation(nameField, emailField, passwordField, confirmField,
+                        nameValidationLabel, emailValidationLabel, passwordValidationLabel, confirmValidationLabel, false);
+            }
 
-        JPanel form = new JPanel(new GridLayout(0, 1, 0, 12));
+            @Override
+            public void removeUpdate(DocumentEvent event) {
+                updateRegistrationValidation(nameField, emailField, passwordField, confirmField,
+                        nameValidationLabel, emailValidationLabel, passwordValidationLabel, confirmValidationLabel, false);
+            }
+
+            @Override
+            public void changedUpdate(DocumentEvent event) {
+                updateRegistrationValidation(nameField, emailField, passwordField, confirmField,
+                        nameValidationLabel, emailValidationLabel, passwordValidationLabel, confirmValidationLabel, false);
+            }
+        };
+        nameField.getDocument().addDocumentListener(validationListener);
+        emailField.getDocument().addDocumentListener(validationListener);
+        passwordField.getDocument().addDocumentListener(validationListener);
+        confirmField.getDocument().addDocumentListener(validationListener);
+        updateRegistrationValidation(nameField, emailField, passwordField, confirmField,
+                nameValidationLabel, emailValidationLabel, passwordValidationLabel, confirmValidationLabel, false);
+
+        JPanel form = new JPanel();
+        form.setLayout(new BoxLayout(form, BoxLayout.Y_AXIS));
         form.setOpaque(false);
-        form.add(labeledField("Display name", nameField));
-        form.add(labeledField("Email", emailField));
-        form.add(labeledField("Password", passwordField));
-        form.add(UiFactory.mutedLabel("Password must contain at least 6 characters."));
-        form.add(labeledField("Confirm password", confirmField));
+        form.setBorder(BorderFactory.createEmptyBorder(4, 4, 4, 4));
+        form.add(UiFactory.mutedLabel("Create an applicant account with your email and a secure password."));
+        form.add(Box.createVerticalStrut(12));
+        form.add(labeledField("Display name", nameField, nameValidationLabel));
+        form.add(Box.createVerticalStrut(10));
+        form.add(labeledField("Email", emailField, emailValidationLabel));
+        form.add(Box.createVerticalStrut(10));
+        form.add(labeledField("Password", UiFactory.passwordFieldWithToggle(passwordField, "Show"), passwordValidationLabel));
+        form.add(Box.createVerticalStrut(8));
+        form.add(UiFactory.passwordStrengthMeter(passwordField));
+        form.add(Box.createVerticalStrut(4));
+        form.add(UiFactory.mutedLabel("Password must contain 6 to 20 characters."));
+        form.add(Box.createVerticalStrut(10));
+        form.add(labeledField("Confirm password", UiFactory.passwordFieldWithToggle(confirmField, "Show"), confirmValidationLabel));
 
-        int result = JOptionPane.showConfirmDialog(this, form, "Create Applicant Account", JOptionPane.OK_CANCEL_OPTION, JOptionPane.PLAIN_MESSAGE);
+        int result = JOptionPane.showOptionDialog(
+                this,
+                form,
+                "Create Applicant Account",
+                JOptionPane.OK_CANCEL_OPTION,
+                JOptionPane.PLAIN_MESSAGE,
+                null,
+                new Object[]{"Create account", "Cancel"},
+                "Create account"
+        );
         if (result != JOptionPane.OK_OPTION) {
             return;
         }
+        updateRegistrationValidation(nameField, emailField, passwordField, confirmField,
+                nameValidationLabel, emailValidationLabel, passwordValidationLabel, confirmValidationLabel, true);
 
         registrationHandler.accept(new RegistrationRequest(
                 nameField.getText(),
@@ -205,6 +264,30 @@ public class LoginPanel extends JPanel {
                 new String(passwordField.getPassword()),
                 new String(confirmField.getPassword())
         ));
+    }
+
+    private void updateRegistrationValidation(
+            JTextField nameField,
+            JTextField emailField,
+            JPasswordField passwordField,
+            JPasswordField confirmField,
+            JLabel nameValidationLabel,
+            JLabel emailValidationLabel,
+            JLabel passwordValidationLabel,
+            JLabel confirmValidationLabel,
+            boolean showRequiredErrors
+    ) {
+        String name = nameField.getText().trim();
+        String email = emailField.getText().trim();
+        String password = new String(passwordField.getPassword());
+        String confirmPassword = new String(confirmField.getPassword());
+        UiFactory.setValidationMessage(nameValidationLabel, name.isBlank() ? (showRequiredErrors ? "Display name is required." : "") : "", name.isBlank() && showRequiredErrors);
+        boolean invalidEmail = !email.isBlank() && !email.matches("^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$");
+        UiFactory.setValidationMessage(emailValidationLabel, email.isBlank() ? (showRequiredErrors ? "Email is required." : "Example: name@school.edu") : (invalidEmail ? "Enter a valid email address." : ""), invalidEmail || (email.isBlank() && showRequiredErrors));
+        boolean invalidPassword = password.length() < 6 || password.length() > 20;
+        UiFactory.setValidationMessage(passwordValidationLabel, password.isBlank() ? (showRequiredErrors ? "Password is required." : "6 to 20 characters") : (invalidPassword ? "Password must be 6 to 20 characters." : ""), invalidPassword && (!password.isBlank() || showRequiredErrors));
+        boolean mismatch = !confirmPassword.isBlank() && !password.equals(confirmPassword);
+        UiFactory.setValidationMessage(confirmValidationLabel, confirmPassword.isBlank() ? (showRequiredErrors ? "Confirm your password." : "") : (mismatch ? "Passwords must match." : ""), mismatch || (confirmPassword.isBlank() && showRequiredErrors));
     }
 
     public record LoginRequest(String email, String password) {

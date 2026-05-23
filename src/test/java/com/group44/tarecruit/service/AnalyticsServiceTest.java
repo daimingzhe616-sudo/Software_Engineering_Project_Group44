@@ -70,13 +70,13 @@ class AnalyticsServiceTest {
     }
 
     @Test
-    void generatesWorkloadSuggestionsForOpenRolesAndHeavyLoads() {
+    void generatesWorkloadSuggestionsForUnfilledRolesAndHeavyLoads() {
         AnalyticsService service = buildService();
 
         List<AnalyticsService.WorkloadSuggestion> suggestions = service.getWorkloadSuggestions("Semester A");
 
         assertTrue(suggestions.stream().anyMatch(item -> item.category().equals("High workload")));
-        assertTrue(suggestions.stream().anyMatch(item -> item.category().equals("Open role")));
+        assertTrue(suggestions.stream().anyMatch(item -> item.category().equals("Unfilled role")));
     }
 
     @Test
@@ -118,7 +118,7 @@ class AnalyticsServiceTest {
                                 {
                                   "suggestions": [
                                     {
-                                      "category": "Open role",
+                                      "category": "Unfilled role",
                                       "subject": "Programming TA",
                                       "summary": "One strong applicant is ready to be prioritised.",
                                       "recommendation": "Advance Amy Parker first because her profile aligns closely with the vacancy.",
@@ -147,7 +147,7 @@ class AnalyticsServiceTest {
         assertTrue(gap.suggestions().getFirst().contains("lab-support"));
 
         AnalyticsService.WorkloadSuggestion suggestion = service.getWorkloadSuggestions("Semester A").getFirst();
-        assertEquals("Open role", suggestion.category());
+        assertEquals("Unfilled role", suggestion.category());
         assertTrue(suggestion.recommendation().contains("Amy Parker"));
     }
 

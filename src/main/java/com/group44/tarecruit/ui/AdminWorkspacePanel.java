@@ -17,6 +17,9 @@ import javax.swing.JLabel;
 import javax.swing.JOptionPane;
 import javax.swing.JPanel;
 import javax.swing.JTextArea;
+import javax.swing.JTextField;
+import javax.swing.event.DocumentEvent;
+import javax.swing.event.DocumentListener;
 import java.awt.BorderLayout;
 import java.awt.CardLayout;
 import java.awt.Color;
@@ -26,7 +29,10 @@ import java.awt.FlowLayout;
 import java.awt.GridLayout;
 import java.io.File;
 import java.nio.file.Path;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
+import java.util.Set;
 
 public class AdminWorkspacePanel extends JPanel {
     private static final String WORKLOAD_PAGE = "workload";
@@ -34,6 +40,7 @@ public class AdminWorkspacePanel extends JPanel {
     private static final String SUGGESTIONS_PAGE = "suggestions";
     private static final String EXPORT_PAGE = "export";
     private static final String LOGS_PAGE = "logs";
+    private static final String ALL_LOG_CATEGORIES = "All categories";
 
     private final WorkloadService workloadService;
     private final AnalyticsService analyticsService;
@@ -57,9 +64,12 @@ public class AdminWorkspacePanel extends JPanel {
     private final JComboBox<String> exportSemesterFilterBox;
     private final JLabel exportSummaryLabel;
     private final JPanel exportPreviewPanel;
+    private final JComboBox<String> logCategoryFilterBox;
+    private final JTextField logSearchField;
     private final JPanel logsListPanel;
 
     private UserAccount currentUser;
+    private boolean suppressLogRefresh;
 
     public AdminWorkspacePanel(
             WorkloadService workloadService,
@@ -99,13 +109,37 @@ public class AdminWorkspacePanel extends JPanel {
         exportSummaryLabel = UiFactory.mutedLabel("Export the current applicant analytics view as CSV.");
         exportPreviewPanel = verticalPanel();
 
+        logCategoryFilterBox = new JComboBox<>();
+        logCategoryFilterBox.setFont(Theme.BODY_FONT);
+        logCategoryFilterBox.addActionListener(event -> {
+            if (!suppressLogRefresh) {
+                refreshLogs();
+            }
+        });
+        logSearchField = UiFactory.textField();
+        logSearchField.getDocument().addDocumentListener(new DocumentListener() {
+            @Override
+            public void insertUpdate(DocumentEvent event) {
+                refreshLogs();
+            }
+
+            @Override
+            public void removeUpdate(DocumentEvent event) {
+                refreshLogs();
+            }
+
+            @Override
+            public void changedUpdate(DocumentEvent event) {
+                refreshLogs();
+            }
+        });
         logsListPanel = verticalPanel();
 
         pagePanel.add(UiFactory.scrollPane(buildWorkloadPage()), WORKLOAD_PAGE);
         pagePanel.add(UiFactory.scrollPane(buildMatchingPage()), MATCHING_PAGE);
-        pagePanel.add(UiFactory.scrollPane(buildSuggestionsPage()), SUGGESTIONS_PAGE);
+        pagePanel.add(buildSuggestionsPage(), SUGGESTIONS_PAGE);
         pagePanel.add(UiFactory.scrollPane(buildExportPage()), EXPORT_PAGE);
-        pagePanel.add(UiFactory.scrollPane(buildLogsPage()), LOGS_PAGE);
+        pagePanel.add(buildLogsPage(), LOGS_PAGE);
         add(pagePanel, BorderLayout.CENTER);
     }
 
@@ -202,16 +236,20 @@ public class AdminWorkspacePanel extends JPanel {
     }
 
     private JPanel buildSuggestionsPage() {
-        JPanel page = pageWrapper();
-        page.add(UiFactory.titleLabel("AI Workload Suggestions"));
-        page.add(Box.createVerticalStrut(8));
-        page.add(UiFactory.mutedLabel("Surface staffing risks and practical next actions before offers are made."));
-        page.add(Box.createVerticalStrut(6));
-        page.add(suggestionsFallbackLabel);
-        page.add(Box.createVerticalStrut(24));
-        page.add(filterCard("Semester", suggestionsSemesterFilterBox, this::refreshSuggestions));
-        page.add(Box.createVerticalStrut(20));
-        page.add(suggestionsListPanel);
+        JPanel page = new JPanel(new BorderLayout(0, 14));
+        page.setOpaque(false);
+        page.setBorder(BorderFactory.createEmptyBorder(16, 16, 16, 16));
+
+        JPanel top = verticalPanel();
+        top.add(UiFactory.titleLabel("AI Workload Suggestions"));
+        top.add(Box.createVerticalStrut(6));
+        top.add(UiFactory.mutedLabel("Surface staffing risks and practical next actions before offers are made."));
+        top.add(Box.createVerticalStrut(6));
+        top.add(suggestionsFallbackLabel);
+        top.add(Box.createVerticalStrut(14));
+        top.add(filterCard("Semester", suggestionsSemesterFilterBox, this::refreshSuggestions));
+        page.add(top, BorderLayout.NORTH);
+        page.add(UiFactory.scrollPane(suggestionsListPanel), BorderLayout.CENTER);
         return page;
     }
 
@@ -251,19 +289,38 @@ public class AdminWorkspacePanel extends JPanel {
     }
 
     private JPanel buildLogsPage() {
-        JPanel page = pageWrapper();
-        page.add(UiFactory.titleLabel("System Notification Logs"));
-        page.add(Box.createVerticalStrut(8));
-        page.add(UiFactory.mutedLabel("Track profile, notification, export, and vacancy activity in one chronological view."));
-        page.add(Box.createVerticalStrut(24));
+        JPanel page = new JPanel(new BorderLayout(0, 14));
+        page.setOpaque(false);
+        page.setBorder(BorderFactory.createEmptyBorder(16, 16, 16, 16));
 
-        JPanel actions = UiFactory.flowPanel(FlowLayout.LEFT, 12, 0);
+        JPanel top = verticalPanel();
+        top.add(UiFactory.titleLabel("System Notification Logs"));
+        top.add(Box.createVerticalStrut(6));
+        top.add(UiFactory.mutedLabel("Track the latest 30 profile, notification, export, and vacancy activity logs."));
+        top.add(Box.createVerticalStrut(14));
+
+        JPanel filterCard = UiFactory.card();
+        JPanel actions = new JPanel(new GridLayout(1, 4, 10, 0));
+        actions.setOpaque(false);
+        actions.add(labeledField("Category", logCategoryFilterBox));
+        actions.add(labeledField("Search logs", logSearchField));
         JButton refreshButton = UiFactory.lightButton("Refresh logs");
         refreshButton.addActionListener(event -> refreshLogs());
-        actions.add(refreshButton);
-        page.add(actions);
-        page.add(Box.createVerticalStrut(16));
-        page.add(logsListPanel);
+        JButton clearButton = UiFactory.lightButton("Clear filters");
+        clearButton.addActionListener(event -> clearLogFilters());
+        JPanel actionField = verticalPanel();
+        actionField.add(UiFactory.bodyLabel("Actions"));
+        actionField.add(Box.createVerticalStrut(8));
+        JPanel buttonRow = UiFactory.flowPanel(FlowLayout.LEFT, 8, 0);
+        buttonRow.add(refreshButton);
+        buttonRow.add(clearButton);
+        actionField.add(buttonRow);
+        actions.add(actionField);
+        actions.add(Box.createHorizontalGlue());
+        filterCard.add(actions, BorderLayout.CENTER);
+        top.add(filterCard);
+        page.add(top, BorderLayout.NORTH);
+        page.add(UiFactory.scrollPane(logsListPanel), BorderLayout.CENTER);
         return page;
     }
 
@@ -390,11 +447,72 @@ public class AdminWorkspacePanel extends JPanel {
     }
 
     private void refreshLogs() {
+        List<ActivityLogItem> logs = analyticsService.getSystemLogs();
+        reloadLogCategoryFilter(logs);
+        String selectedCategory = selectedLogCategory();
+        String query = logSearchField.getText().trim().toLowerCase(Locale.ROOT);
         rebuildVerticalList(
                 logsListPanel,
-                analyticsService.getSystemLogs().stream().map(this::logCard).toList(),
-                "No activity logs are available yet."
+                logs.stream()
+                        .filter(item -> ALL_LOG_CATEGORIES.equals(selectedCategory)
+                                || item.category().equalsIgnoreCase(selectedCategory))
+                        .filter(item -> matchesLogQuery(item, query))
+                        .map(this::logCard)
+                        .toList(),
+                hasActiveLogFilters() ? "No logs match the selected filters." : "No activity logs are available yet."
         );
+    }
+
+    private void reloadLogCategoryFilter(List<ActivityLogItem> logs) {
+        Object previousSelection = logCategoryFilterBox.getSelectedItem();
+        suppressLogRefresh = true;
+        logCategoryFilterBox.removeAllItems();
+        logCategoryFilterBox.addItem(ALL_LOG_CATEGORIES);
+        Set<String> categories = new LinkedHashSet<>();
+        logs.stream()
+                .map(ActivityLogItem::category)
+                .filter(category -> !category.isBlank())
+                .sorted(String::compareToIgnoreCase)
+                .forEach(categories::add);
+        categories.forEach(logCategoryFilterBox::addItem);
+        if (previousSelection != null) {
+            logCategoryFilterBox.setSelectedItem(previousSelection);
+        }
+        if (logCategoryFilterBox.getSelectedItem() == null) {
+            logCategoryFilterBox.setSelectedItem(ALL_LOG_CATEGORIES);
+        }
+        suppressLogRefresh = false;
+    }
+
+    private String selectedLogCategory() {
+        Object selected = logCategoryFilterBox.getSelectedItem();
+        return selected == null ? ALL_LOG_CATEGORIES : selected.toString();
+    }
+
+    private boolean matchesLogQuery(ActivityLogItem item, String query) {
+        if (query.isBlank()) {
+            return true;
+        }
+        String searchableText = String.join(" ",
+                item.category(),
+                item.actorUserId(),
+                item.targetUserId(),
+                item.title(),
+                item.message(),
+                item.createdAt()
+        ).toLowerCase(Locale.ROOT);
+        return searchableText.contains(query);
+    }
+
+    private boolean hasActiveLogFilters() {
+        return !ALL_LOG_CATEGORIES.equals(selectedLogCategory())
+                || !logSearchField.getText().isBlank();
+    }
+
+    private void clearLogFilters() {
+        logSearchField.setText("");
+        logCategoryFilterBox.setSelectedItem(ALL_LOG_CATEGORIES);
+        refreshLogs();
     }
 
     private JPanel workloadSummaryCard(WorkloadService.WorkloadSummary summary) {

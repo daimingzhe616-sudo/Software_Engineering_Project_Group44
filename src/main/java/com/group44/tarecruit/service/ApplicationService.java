@@ -1,6 +1,7 @@
 package com.group44.tarecruit.service;
 
 import com.group44.tarecruit.data.ApplicationRepository;
+import com.group44.tarecruit.data.CsvUtils;
 import com.group44.tarecruit.data.JobRepository;
 import com.group44.tarecruit.data.ProfileRepository;
 import com.group44.tarecruit.data.UserRepository;
@@ -10,6 +11,7 @@ import com.group44.tarecruit.model.JobApplication;
 import com.group44.tarecruit.model.JobPosting;
 import com.group44.tarecruit.model.UserAccount;
 
+import java.nio.file.Path;
 import java.time.format.DateTimeParseException;
 import java.time.LocalDateTime;
 import java.util.Comparator;
@@ -174,7 +176,27 @@ public class ApplicationService {
         notificationService.notifyUser(
                 application.applicantId(),
                 "Application update",
-                "Your application for " + job.title() + " was not successful."
+            "Your application for " + job.title() + " was not successful."
+        );
+    }
+
+    public void reopenApplication(String applicationId) {
+        JobApplication application = applicationRepository.findById(applicationId)
+                .orElseThrow(() -> new IllegalArgumentException("Application not found."));
+        if (application.status() != ApplicationStatus.REJECTED) {
+            throw new IllegalArgumentException("Only rejected applications can be reopened.");
+        }
+        JobPosting job = jobRepository.findById(application.jobId()).orElseThrow();
+        applicationRepository.upsert(updateApplication(
+                application,
+                ApplicationStatus.UNDER_REVIEW,
+                "Application reopened for further review.",
+                ""
+        ));
+        notificationService.notifyUser(
+                application.applicantId(),
+                "Application reopened",
+                "Your application for " + job.title() + " has been reopened for further review."
         );
     }
 
@@ -202,7 +224,27 @@ public class ApplicationService {
         notificationService.notifyUser(
                 application.applicantId(),
                 "Interview scheduled",
-                "Your interview for " + job.title() + " is scheduled for " + formatDateTime(interviewAt) + "."
+            "Your interview for " + job.title() + " is scheduled for " + formatDateTime(interviewAt) + "."
+        );
+    }
+
+    public void cancelInterview(String applicationId) {
+        JobApplication application = applicationRepository.findById(applicationId)
+                .orElseThrow(() -> new IllegalArgumentException("Application not found."));
+        if (application.status() != ApplicationStatus.INTERVIEW_SCHEDULED) {
+            throw new IllegalArgumentException("Only scheduled interviews can be cancelled.");
+        }
+        JobPosting job = jobRepository.findById(application.jobId()).orElseThrow();
+        applicationRepository.upsert(updateApplication(
+                application,
+                ApplicationStatus.UNDER_REVIEW,
+                "Interview cancelled. Your application is back under review.",
+                ""
+        ));
+        notificationService.notifyUser(
+                application.applicantId(),
+                "Interview cancelled",
+                "Your interview for " + job.title() + " has been cancelled. Your application is back under review."
         );
     }
 
@@ -250,6 +292,48 @@ public class ApplicationService {
                 .filter(application -> application.jobId().equals(jobId))
                 .filter(application -> application.status() == ApplicationStatus.SELECTED)
                 .count();
+    }
+
+    public ExportResult exportApplicantsForJob(String jobId, Path filePath) {
+        JobPosting job = jobRepository.findById(jobId)
+                .orElseThrow(() -> new IllegalArgumentException("Job not found."));
+        List<List<String>> rows = findApplicantsForJob(jobId, "", null).stream()
+                .map(item -> List.of(
+                        job.title(),
+                        job.moduleCode(),
+                        job.semester(),
+                        item.applicant().displayName(),
+                        item.applicant().email(),
+                        item.profile().studentId(),
+                        item.profile().programme(),
+                        item.profile().year(),
+                        item.profile().skills(),
+                        item.profile().availability(),
+                        item.profile().gpa(),
+                        item.application().status().label(),
+                        item.application().appliedAt(),
+                        item.application().interviewAt(),
+                        item.application().note()
+                ))
+                .toList();
+        CsvUtils.write(filePath, List.of(
+                "jobTitle",
+                "moduleCode",
+                "semester",
+                "applicantName",
+                "email",
+                "studentId",
+                "programme",
+                "year",
+                "skills",
+                "availability",
+                "gpa",
+                "status",
+                "appliedAt",
+                "interviewAt",
+                "note"
+        ), rows);
+        return new ExportResult(filePath.toAbsolutePath().toString(), rows.size());
     }
 
     public List<String> availableApplicationSemestersForApplicant(String applicantId) {
@@ -382,9 +466,9 @@ public class ApplicationService {
             throw new IllegalArgumentException("Interview time is required.");
         }
         try {
-            return LocalDateTime.parse(value.trim()).toString();
+            return LocalDateTime.parse(value.trim().replace('：', ':')).toString();
         } catch (DateTimeParseException exception) {
-            throw new IllegalArgumentException("Interview time must use the format yyyy-MM-ddTHH:mm.");
+            throw new IllegalArgumentException("Interview time must use the format yyyy-MM-ddTHH:mm, for example 2026-05-24T15:00.");
         }
     }
 
@@ -406,5 +490,8 @@ public class ApplicationService {
             ApplicantProfile profile,
             int fitScore
     ) {
+    }
+
+    public record ExportResult(String path, int rowCount) {
     }
 }

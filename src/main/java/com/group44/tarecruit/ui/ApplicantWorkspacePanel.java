@@ -22,6 +22,7 @@ import javax.swing.Box;
 import javax.swing.BoxLayout;
 import javax.swing.JButton;
 import javax.swing.JComboBox;
+import javax.swing.JComponent;
 import javax.swing.JFileChooser;
 import javax.swing.JLabel;
 import javax.swing.JOptionPane;
@@ -79,6 +80,13 @@ public class ApplicantWorkspacePanel extends JPanel {
     private final JTextField skillsField;
     private final JTextField availabilityField;
     private final JTextField gpaField;
+    private final JLabel fullNameValidationLabel;
+    private final JLabel studentIdValidationLabel;
+    private final JLabel programmeValidationLabel;
+    private final JLabel yearValidationLabel;
+    private final JLabel availabilityValidationLabel;
+    private final JLabel gpaValidationLabel;
+    private final JLabel skillsValidationLabel;
     private final JLabel cvStatusLabel;
     private final JLabel avatarStatusLabel;
     private final JLabel resumeStatusLabel;
@@ -109,6 +117,7 @@ public class ApplicantWorkspacePanel extends JPanel {
     private String currentAvatarStoredPath = "";
     private Map<String, JobApplication> applicationsByJobId = new LinkedHashMap<>();
     private boolean suppressFilterRefresh;
+    private boolean profileValidationSubmitted;
 
     public ApplicantWorkspacePanel(
             ProfileService profileService,
@@ -159,6 +168,13 @@ public class ApplicantWorkspacePanel extends JPanel {
         skillsField = UiFactory.textField();
         availabilityField = UiFactory.textField();
         gpaField = UiFactory.textField();
+        fullNameValidationLabel = UiFactory.validationLabel();
+        studentIdValidationLabel = UiFactory.validationLabel();
+        programmeValidationLabel = UiFactory.validationLabel();
+        yearValidationLabel = UiFactory.validationLabel();
+        availabilityValidationLabel = UiFactory.validationLabel();
+        gpaValidationLabel = UiFactory.validationLabel();
+        skillsValidationLabel = UiFactory.validationLabel();
         cvStatusLabel = UiFactory.mutedLabel("No CV uploaded yet.");
         avatarStatusLabel = UiFactory.mutedLabel("No avatar uploaded yet.");
         resumeStatusLabel = UiFactory.mutedLabel("No PDF resume generated yet.");
@@ -217,10 +233,11 @@ public class ApplicantWorkspacePanel extends JPanel {
                 refreshSkillInsights();
             }
         });
+        attachProfileValidation();
 
         pagePanel.add(UiFactory.scrollPane(buildDashboardPage()), DASHBOARD_PAGE);
-        pagePanel.add(UiFactory.scrollPane(buildProfilePage()), PROFILE_PAGE);
-        pagePanel.add(UiFactory.scrollPane(buildJobsPage()), JOBS_PAGE);
+        pagePanel.add(buildProfilePage(), PROFILE_PAGE);
+        pagePanel.add(buildJobsPage(), JOBS_PAGE);
         pagePanel.add(UiFactory.scrollPane(buildApplicationsPage()), APPLICATIONS_PAGE);
         pagePanel.add(UiFactory.scrollPane(buildSkillInsightsPage()), INSIGHTS_PAGE);
         add(pagePanel, BorderLayout.CENTER);
@@ -302,35 +319,60 @@ public class ApplicantWorkspacePanel extends JPanel {
     }
 
     private JPanel buildProfilePage() {
-        JPanel page = pageWrapper();
-        page.add(UiFactory.titleLabel("Applicant Profile"));
-        page.add(Box.createVerticalStrut(8));
-        page.add(UiFactory.mutedLabel("Create or update your reusable profile. Required fields must be completed before saving."));
-        page.add(Box.createVerticalStrut(24));
+        JPanel page = new JPanel(new BorderLayout(0, 16));
+        page.setOpaque(false);
+        page.setBorder(BorderFactory.createEmptyBorder(16, 16, 16, 16));
+
+        JPanel header = new JPanel();
+        header.setOpaque(false);
+        header.setLayout(new BoxLayout(header, BoxLayout.Y_AXIS));
+        header.add(UiFactory.titleLabel("Applicant Profile"));
+        header.add(Box.createVerticalStrut(6));
+        header.add(UiFactory.mutedLabel("Create or update your reusable profile. Required fields must be completed before saving."));
+        page.add(header, BorderLayout.NORTH);
 
         JPanel card = UiFactory.card();
-        JPanel grid = new JPanel(new GridLayout(0, 2, 12, 10));
+        JPanel grid = new JPanel();
         grid.setOpaque(false);
-        grid.add(labeledField("Full name", fullNameField));
-        grid.add(labeledField("Student ID", studentIdField));
-        grid.add(labeledField("Programme", programmeField));
-        grid.add(labeledField("Year", yearField));
-        grid.add(labeledField("Availability", availabilityField));
-        grid.add(labeledField("GPA", gpaField));
-        grid.add(labeledField("Skills", skillsField));
-        grid.add(buildCvCard());
+        grid.setLayout(new BoxLayout(grid, BoxLayout.Y_AXIS));
+        grid.add(profileRow(
+                labeledField("Full name", fullNameField, fullNameValidationLabel),
+                labeledField("Student ID", studentIdField, studentIdValidationLabel)
+        ));
+        grid.add(Box.createVerticalStrut(10));
+        grid.add(profileRow(
+                labeledField("Programme", programmeField, programmeValidationLabel),
+                labeledField("Year", yearField, yearValidationLabel)
+        ));
+        grid.add(Box.createVerticalStrut(10));
+        grid.add(profileRow(
+                labeledField("Availability", availabilityField, availabilityValidationLabel),
+                labeledField("GPA", gpaField, gpaValidationLabel)
+        ));
+        grid.add(Box.createVerticalStrut(10));
+        grid.add(profileRow(
+                labeledField("Skills", skillsField, skillsValidationLabel),
+                buildCvCard()
+        ));
 
         card.add(grid, BorderLayout.CENTER);
-        page.add(card);
-        page.add(Box.createVerticalStrut(16));
+        page.add(card, BorderLayout.CENTER);
 
         JPanel actionRow = UiFactory.flowPanel(java.awt.FlowLayout.LEFT, 12, 0);
         JButton saveButton = UiFactory.primaryButton("Save profile");
         saveButton.addActionListener(event -> saveProfile());
         actionRow.add(saveButton);
         actionRow.add(profileTimestampLabel);
-        page.add(actionRow);
+        page.add(actionRow, BorderLayout.SOUTH);
         return page;
+    }
+
+    private JPanel profileRow(Component left, Component right) {
+        JPanel row = new JPanel(new GridLayout(1, 2, 12, 0));
+        row.setOpaque(false);
+        row.add(left);
+        row.add(right);
+        return row;
     }
 
     private JPanel buildCvCard() {
@@ -364,30 +406,35 @@ public class ApplicantWorkspacePanel extends JPanel {
     }
 
     private JPanel buildJobsPage() {
-        JPanel page = pageWrapper();
-        page.add(UiFactory.titleLabel("Available Jobs"));
-        page.add(Box.createVerticalStrut(8));
-        page.add(UiFactory.mutedLabel("Browse the current vacancies and review full job requirements before applying."));
-        page.add(Box.createVerticalStrut(18));
-        page.add(buildJobFiltersCard());
-        page.add(Box.createVerticalStrut(24));
+        JPanel page = new JPanel(new BorderLayout(0, 14));
+        page.setOpaque(false);
+        page.setBorder(BorderFactory.createEmptyBorder(16, 16, 16, 16));
+
+        JPanel top = new JPanel();
+        top.setOpaque(false);
+        top.setLayout(new BoxLayout(top, BoxLayout.Y_AXIS));
+        top.add(UiFactory.titleLabel("Available Jobs"));
+        top.add(Box.createVerticalStrut(6));
+        top.add(UiFactory.mutedLabel("Browse the current vacancies and review full job requirements before applying."));
+        top.add(Box.createVerticalStrut(12));
+        top.add(buildJobFiltersCard());
+        page.add(top, BorderLayout.NORTH);
 
         JPanel layout = new JPanel(new GridLayout(1, 2, 10, 0));
         layout.setOpaque(false);
         JPanel listCard = UiFactory.card();
         JScrollPane jobsScrollPane = UiFactory.scrollPane(jobsListPanel);
-        jobsScrollPane.setPreferredSize(new Dimension(260, 390));
         listCard.add(jobsScrollPane, BorderLayout.CENTER);
         JPanel detailCard = buildJobDetailCard();
         layout.add(listCard);
         layout.add(detailCard);
-        page.add(layout);
+        page.add(layout, BorderLayout.CENTER);
         return page;
     }
 
     private JPanel buildJobFiltersCard() {
         JPanel card = UiFactory.card();
-        JPanel content = new JPanel(new GridLayout(2, 2, 10, 8));
+        JPanel content = new JPanel(new GridLayout(1, 4, 10, 0));
         content.setOpaque(false);
         content.add(labeledField("Search", jobSearchField));
         content.add(labeledField("Skill tag", jobTagFilterBox));
@@ -401,8 +448,8 @@ public class ApplicantWorkspacePanel extends JPanel {
         JButton clearButton = UiFactory.lightButton("Reset filters");
         clearButton.addActionListener(event -> resetJobFilters());
         actions.add(clearButton);
-        card.add(content, BorderLayout.CENTER);
         content.add(actions);
+        card.add(content, BorderLayout.CENTER);
         return card;
     }
 
@@ -521,20 +568,35 @@ public class ApplicantWorkspacePanel extends JPanel {
     }
 
     private JPanel labeledField(String labelText, Component field) {
+        return labeledField(labelText, field, null);
+    }
+
+    private JPanel labeledField(String labelText, Component field, JLabel validationLabel) {
         JPanel panel = new JPanel();
         panel.setOpaque(false);
         panel.setLayout(new BoxLayout(panel, BoxLayout.Y_AXIS));
         panel.add(UiFactory.bodyLabel(labelText));
         panel.add(Box.createVerticalStrut(8));
+        if (field instanceof JComponent component
+                && !(field instanceof JPanel)
+                && !(field instanceof JScrollPane)
+                && !(field instanceof JTextArea)) {
+            UiFactory.fixedHeight(component, 36);
+        }
         panel.add(field);
+        if (validationLabel != null) {
+            panel.add(Box.createVerticalStrut(4));
+            panel.add(validationLabel);
+        }
         return panel;
     }
 
     private JTextArea readOnlyArea() {
-        JTextArea area = UiFactory.textArea(5);
+        JTextArea area = UiFactory.textArea(4);
         area.setEditable(false);
         area.setBackground(Theme.SURFACE_MUTED);
         area.setBorder(BorderFactory.createEmptyBorder(12, 12, 12, 12));
+        UiFactory.fixedHeight(area, 112);
         return area;
     }
 
@@ -599,14 +661,7 @@ public class ApplicantWorkspacePanel extends JPanel {
                 ? "Your profile is complete and ready for applications."
                 : "Your profile is incomplete. Finish it before applying for a new role.");
 
-        rebuildVerticalList(dashboardJobs, jobService.getAllJobs().stream()
-                .map(this::dashboardJobCard)
-                .toList(), "No jobs are available right now.");
-        List<JobPosting> savedJobs = savedJobService.findSavedJobPostings(currentUser.id());
-        if (!savedJobs.isEmpty()) {
-            dashboardJobs.add(Box.createVerticalStrut(10));
-            dashboardJobs.add(UiFactory.mutedLabel("Saved for later: " + savedJobs.size()));
-        }
+        refreshDashboardJobs();
         rebuildVerticalList(dashboardNotifications, notificationService.getNotificationsForUser(currentUser.id()).stream()
                 .map(this::notificationCard)
                 .toList(), "No updates yet.");
@@ -614,6 +669,70 @@ public class ApplicantWorkspacePanel extends JPanel {
                 .limit(3)
                 .map(this::dashboardSkillInsightCard)
                 .toList(), "No skill insights are available yet.");
+    }
+
+    private void refreshDashboardJobs() {
+        dashboardJobs.removeAll();
+        List<JobPosting> savedJobs = savedJobService.findSavedJobPostings(currentUser.id());
+        if (!savedJobs.isEmpty()) {
+            dashboardJobs.add(UiFactory.bodyLabel("Saved for later"));
+            dashboardJobs.add(Box.createVerticalStrut(8));
+            for (JobPosting savedJob : savedJobs) {
+                dashboardJobs.add(dashboardSavedJobCard(savedJob));
+                dashboardJobs.add(Box.createVerticalStrut(10));
+            }
+            dashboardJobs.add(Box.createVerticalStrut(8));
+        }
+
+        dashboardJobs.add(UiFactory.bodyLabel("Open vacancies"));
+        dashboardJobs.add(Box.createVerticalStrut(8));
+        List<Component> jobCards = jobService.getAllJobs().stream()
+                .map(this::dashboardJobCard)
+                .toList();
+        if (jobCards.isEmpty()) {
+            dashboardJobs.add(UiFactory.mutedLabel("No jobs are available right now."));
+        } else {
+            for (int index = 0; index < jobCards.size(); index++) {
+                dashboardJobs.add(jobCards.get(index));
+                if (index < jobCards.size() - 1) {
+                    dashboardJobs.add(Box.createVerticalStrut(12));
+                }
+            }
+        }
+        dashboardJobs.revalidate();
+        dashboardJobs.repaint();
+    }
+
+    private Component dashboardSavedJobCard(JobPosting job) {
+        JPanel card = UiFactory.card();
+        card.setMaximumSize(new Dimension(Integer.MAX_VALUE, 154));
+        JPanel content = new JPanel();
+        content.setOpaque(false);
+        content.setLayout(new BoxLayout(content, BoxLayout.Y_AXIS));
+        JLabel title = UiFactory.bodyLabel(job.title());
+        title.setFont(Theme.BUTTON_FONT);
+        content.add(title);
+        content.add(Box.createVerticalStrut(4));
+        content.add(UiFactory.mutedLabel("<html>" + job.summaryLine() + "</html>"));
+        content.add(Box.createVerticalStrut(10));
+        JPanel row = UiFactory.flowPanel(java.awt.FlowLayout.LEFT, 10, 0);
+        JButton viewButton = UiFactory.lightButton("View detail");
+        viewButton.addActionListener(event -> {
+            selectedJob = job;
+            updateJobDetailPanel();
+            showPage(JOBS_PAGE);
+        });
+        JButton removeButton = UiFactory.lightButton("Remove saved");
+        removeButton.addActionListener(event -> {
+            savedJobService.removeSavedJob(currentUser.id(), job.id());
+            refreshJobs();
+            refreshDashboard();
+        });
+        row.add(viewButton);
+        row.add(removeButton);
+        content.add(row);
+        card.add(content, BorderLayout.CENTER);
+        return card;
     }
 
     private Component dashboardJobCard(JobPosting job) {
@@ -780,8 +899,7 @@ public class ApplicantWorkspacePanel extends JPanel {
     }
 
     private void refreshJobs() {
-        applicationsByJobId = applicationService.findApplicationsForApplicant(currentUser.id()).stream()
-                .collect(LinkedHashMap::new, (map, application) -> map.put(application.jobId(), application), LinkedHashMap::putAll);
+        refreshApplicationsByJobId();
         reloadJobFilters();
         List<JobPosting> jobs = jobService.filterJobs(
                 jobSearchField.getText(),
@@ -807,6 +925,11 @@ public class ApplicantWorkspacePanel extends JPanel {
                 hasActiveJobFilters() ? "No jobs match your current filters." : "No jobs are available right now."
         );
         updateJobDetailPanel();
+    }
+
+    private void refreshApplicationsByJobId() {
+        applicationsByJobId = applicationService.findApplicationsForApplicant(currentUser.id()).stream()
+                .collect(LinkedHashMap::new, (map, application) -> map.put(application.jobId(), application), LinkedHashMap::putAll);
     }
 
     private Component jobCard(JobPosting job) {
@@ -859,7 +982,7 @@ public class ApplicantWorkspacePanel extends JPanel {
         buttonRow.add(viewButton);
         buttonRow.add(quickApplyButton);
         if (savedJobService.isSaved(currentUser.id(), job.id())) {
-            buttonRow.add(pillLabel("Saved", Theme.SURFACE_MUTED, Theme.TEXT));
+            buttonRow.add(pillLabel("Saved for later", Theme.SURFACE_MUTED, Theme.TEXT));
         }
         content.add(buttonRow);
 
@@ -947,7 +1070,7 @@ public class ApplicantWorkspacePanel extends JPanel {
         rebuildVerticalList(applicationsListPanel, applications.stream()
                 .map(this::applicationCard)
                 .toList(), hasActiveApplicationFilters()
-                ? "No applications match the selected filters."
+                ? "No applications match these filters. Try Show all to see every application."
                 : "You have not submitted any applications yet.");
     }
 
@@ -1116,6 +1239,8 @@ public class ApplicantWorkspacePanel extends JPanel {
     }
 
     private void saveProfile() {
+        profileValidationSubmitted = true;
+        updateProfileValidation(true);
         try {
             ApplicantProfile savedProfile = profileService.saveProfile(new ApplicantProfile(
                     currentUser.id(),
@@ -1139,6 +1264,87 @@ public class ApplicantWorkspacePanel extends JPanel {
             JOptionPane.showMessageDialog(this, "Profile saved successfully.");
         } catch (IllegalArgumentException exception) {
             JOptionPane.showMessageDialog(this, exception.getMessage());
+        }
+    }
+
+    private void attachProfileValidation() {
+        DocumentListener listener = new DocumentListener() {
+            @Override
+            public void insertUpdate(DocumentEvent event) {
+                updateProfileValidation(profileValidationSubmitted);
+            }
+
+            @Override
+            public void removeUpdate(DocumentEvent event) {
+                updateProfileValidation(profileValidationSubmitted);
+            }
+
+            @Override
+            public void changedUpdate(DocumentEvent event) {
+                updateProfileValidation(profileValidationSubmitted);
+            }
+        };
+        for (JTextField field : List.of(fullNameField, studentIdField, programmeField, yearField, skillsField, availabilityField, gpaField)) {
+            field.getDocument().addDocumentListener(listener);
+        }
+        updateProfileValidation(false);
+    }
+
+    private void updateProfileValidation(boolean showRequiredErrors) {
+        setRequiredHint(fullNameValidationLabel, fullNameField.getText(), "Full name is required.", "", showRequiredErrors);
+        setStudentIdHint(showRequiredErrors);
+        setRequiredHint(programmeValidationLabel, programmeField.getText(), "Programme is required.", "", showRequiredErrors);
+        setYearHint(showRequiredErrors);
+        setRequiredHint(availabilityValidationLabel, availabilityField.getText(), "Availability is required.", "When can you work?", showRequiredErrors);
+        setGpaHint(showRequiredErrors);
+        setRequiredHint(skillsValidationLabel, skillsField.getText(), "Skills are required.", "Separate skills with commas", showRequiredErrors);
+    }
+
+    private void setRequiredHint(JLabel label, String value, String errorMessage, String helperMessage, boolean showRequiredError) {
+        boolean blank = value == null || value.trim().isBlank();
+        UiFactory.setValidationMessage(label, blank ? (showRequiredError ? errorMessage : helperMessage) : "", blank && showRequiredError);
+    }
+
+    private void setStudentIdHint(boolean showRequiredError) {
+        String value = studentIdField.getText().trim();
+        if (value.isBlank()) {
+            UiFactory.setValidationMessage(studentIdValidationLabel, showRequiredError ? "Student ID is required." : "6 to 12 digits", showRequiredError);
+            return;
+        }
+        boolean invalid = !value.matches("\\d{6,12}");
+        UiFactory.setValidationMessage(
+                studentIdValidationLabel,
+                invalid ? "Student ID must be 6 to 12 digits." : "",
+                invalid
+        );
+    }
+
+    private void setYearHint(boolean showRequiredError) {
+        String value = yearField.getText().trim();
+        if (value.isBlank()) {
+            UiFactory.setValidationMessage(yearValidationLabel, showRequiredError ? "Year is required." : "Example: Year 2", showRequiredError);
+            return;
+        }
+        boolean invalid = !value.matches("(?i)(year\\s*)?[1-6]");
+        UiFactory.setValidationMessage(
+                yearValidationLabel,
+                invalid ? "Year must be 1 to 6, e.g. Year 2." : "",
+                invalid
+        );
+    }
+
+    private void setGpaHint(boolean showRequiredError) {
+        String value = gpaField.getText().trim();
+        if (value.isBlank()) {
+            UiFactory.setValidationMessage(gpaValidationLabel, showRequiredError ? "GPA is required." : "0.0 to 4.3", showRequiredError);
+            return;
+        }
+        try {
+            double gpa = Double.parseDouble(value);
+            boolean invalid = gpa < 0.0 || gpa > 4.3;
+            UiFactory.setValidationMessage(gpaValidationLabel, invalid ? "GPA must be between 0.0 and 4.3." : "", invalid);
+        } catch (NumberFormatException exception) {
+            UiFactory.setValidationMessage(gpaValidationLabel, "GPA must be a number, e.g. 3.7.", true);
         }
     }
 
@@ -1276,7 +1482,11 @@ public class ApplicantWorkspacePanel extends JPanel {
         }
         try {
             applicationService.applyForJob(selectedJob.id(), currentUser.id());
-            refreshAll();
+            refreshApplicationsByJobId();
+            refreshJobs();
+            resetApplicationFilters();
+            refreshDashboard();
+            refreshSkillInsights();
             showPage(APPLICATIONS_PAGE);
             JOptionPane.showMessageDialog(this, "Application submitted successfully.");
         } catch (RuntimeException exception) {
@@ -1312,7 +1522,7 @@ public class ApplicantWorkspacePanel extends JPanel {
         return switch (application.status()) {
             case APPLIED -> "Applied: Your application has been received and is waiting for review.";
             case UNDER_REVIEW -> "Under Review: The organiser is reviewing your application.";
-            case SHORTLISTED -> "Shortlisted: You are selected for further review.";
+            case SHORTLISTED -> "Shortlisted: Please wait for an interview invitation or further review.";
             case INTERVIEW_SCHEDULED -> "Interview Scheduled: Please attend the interview"
                     + (application.hasInterviewScheduled() ? " at " + application.interviewAt().replace('T', ' ') : "")
                     + ".";

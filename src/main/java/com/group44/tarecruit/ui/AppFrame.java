@@ -27,12 +27,20 @@ import com.group44.tarecruit.service.ProfileService;
 import com.group44.tarecruit.service.SavedJobService;
 import com.group44.tarecruit.service.WorkloadService;
 import com.group44.tarecruit.ui.components.Theme;
+import com.group44.tarecruit.ui.components.UiFactory;
 
+import javax.swing.BorderFactory;
+import javax.swing.Box;
+import javax.swing.BoxLayout;
+import javax.swing.JComponent;
 import javax.swing.JFrame;
+import javax.swing.JLabel;
 import javax.swing.JOptionPane;
 import javax.swing.JPanel;
+import javax.swing.JPasswordField;
+import javax.swing.event.DocumentEvent;
+import javax.swing.event.DocumentListener;
 import java.awt.CardLayout;
-import java.awt.GridLayout;
 import java.nio.file.Path;
 
 public class AppFrame extends JFrame {
@@ -195,23 +203,68 @@ public class AppFrame extends JFrame {
             return;
         }
 
-        javax.swing.JPasswordField currentPasswordField = new javax.swing.JPasswordField();
-        javax.swing.JPasswordField newPasswordField = new javax.swing.JPasswordField();
-        javax.swing.JPasswordField confirmPasswordField = new javax.swing.JPasswordField();
-        currentPasswordField.setFont(com.group44.tarecruit.ui.components.Theme.BODY_FONT);
-        newPasswordField.setFont(com.group44.tarecruit.ui.components.Theme.BODY_FONT);
-        confirmPasswordField.setFont(com.group44.tarecruit.ui.components.Theme.BODY_FONT);
+        JPasswordField currentPasswordField = UiFactory.passwordField();
+        JPasswordField newPasswordField = UiFactory.passwordField();
+        JPasswordField confirmPasswordField = UiFactory.passwordField();
+        JLabel currentPasswordValidationLabel = UiFactory.validationLabel();
+        JLabel newPasswordValidationLabel = UiFactory.validationLabel();
+        JLabel confirmPasswordValidationLabel = UiFactory.validationLabel();
+        DocumentListener validationListener = new DocumentListener() {
+            @Override
+            public void insertUpdate(DocumentEvent event) {
+                updatePasswordDialogValidation(currentPasswordField, newPasswordField, confirmPasswordField,
+                        currentPasswordValidationLabel, newPasswordValidationLabel, confirmPasswordValidationLabel, false);
+            }
 
-        JPanel form = new JPanel(new GridLayout(0, 1, 0, 12));
+            @Override
+            public void removeUpdate(DocumentEvent event) {
+                updatePasswordDialogValidation(currentPasswordField, newPasswordField, confirmPasswordField,
+                        currentPasswordValidationLabel, newPasswordValidationLabel, confirmPasswordValidationLabel, false);
+            }
+
+            @Override
+            public void changedUpdate(DocumentEvent event) {
+                updatePasswordDialogValidation(currentPasswordField, newPasswordField, confirmPasswordField,
+                        currentPasswordValidationLabel, newPasswordValidationLabel, confirmPasswordValidationLabel, false);
+            }
+        };
+        currentPasswordField.getDocument().addDocumentListener(validationListener);
+        newPasswordField.getDocument().addDocumentListener(validationListener);
+        confirmPasswordField.getDocument().addDocumentListener(validationListener);
+        updatePasswordDialogValidation(currentPasswordField, newPasswordField, confirmPasswordField,
+                currentPasswordValidationLabel, newPasswordValidationLabel, confirmPasswordValidationLabel, false);
+
+        JPanel form = new JPanel();
+        form.setLayout(new BoxLayout(form, BoxLayout.Y_AXIS));
         form.setOpaque(false);
-        form.add(labelledField("Current password", currentPasswordField));
-        form.add(labelledField("New password", newPasswordField));
-        form.add(labelledField("Confirm new password", confirmPasswordField));
+        form.setBorder(BorderFactory.createEmptyBorder(4, 4, 4, 4));
+        form.add(UiFactory.mutedLabel("Enter your current password, then choose a new password."));
+        form.add(Box.createVerticalStrut(14));
+        form.add(labelledField("Current password", currentPasswordField, currentPasswordValidationLabel));
+        form.add(Box.createVerticalStrut(12));
+        form.add(labelledField("New password", UiFactory.passwordFieldWithToggle(newPasswordField, "Show"), newPasswordValidationLabel));
+        form.add(Box.createVerticalStrut(8));
+        form.add(UiFactory.passwordStrengthMeter(newPasswordField));
+        form.add(Box.createVerticalStrut(4));
+        form.add(UiFactory.mutedLabel("Password must contain 6 to 20 characters."));
+        form.add(Box.createVerticalStrut(12));
+        form.add(labelledField("Confirm new password", UiFactory.passwordFieldWithToggle(confirmPasswordField, "Show"), confirmPasswordValidationLabel));
 
-        int result = JOptionPane.showConfirmDialog(this, form, "Change Password", JOptionPane.OK_CANCEL_OPTION, JOptionPane.PLAIN_MESSAGE);
+        int result = JOptionPane.showOptionDialog(
+                this,
+                form,
+                "Change Password",
+                JOptionPane.OK_CANCEL_OPTION,
+                JOptionPane.PLAIN_MESSAGE,
+                null,
+                new Object[]{"Update password", "Cancel"},
+                "Update password"
+        );
         if (result != JOptionPane.OK_OPTION) {
             return;
         }
+        updatePasswordDialogValidation(currentPasswordField, newPasswordField, confirmPasswordField,
+                currentPasswordValidationLabel, newPasswordValidationLabel, confirmPasswordValidationLabel, true);
 
         try {
             UserAccount updated = authService.changePassword(
@@ -227,12 +280,53 @@ public class AppFrame extends JFrame {
         }
     }
 
-    private JPanel labelledField(String label, javax.swing.JComponent field) {
-        JPanel panel = new JPanel(new GridLayout(0, 1, 0, 6));
+    private JPanel labelledField(String label, JComponent field) {
+        return labelledField(label, field, null);
+    }
+
+    private JPanel labelledField(String label, JComponent field, JLabel validationLabel) {
+        JPanel panel = new JPanel();
+        panel.setLayout(new BoxLayout(panel, BoxLayout.Y_AXIS));
         panel.setOpaque(false);
         panel.add(com.group44.tarecruit.ui.components.UiFactory.bodyLabel(label));
+        panel.add(Box.createVerticalStrut(6));
         panel.add(field);
+        if (validationLabel != null) {
+            panel.add(Box.createVerticalStrut(4));
+            panel.add(validationLabel);
+        }
         return panel;
+    }
+
+    private void updatePasswordDialogValidation(
+            JPasswordField currentPasswordField,
+            JPasswordField newPasswordField,
+            JPasswordField confirmPasswordField,
+            JLabel currentPasswordValidationLabel,
+            JLabel newPasswordValidationLabel,
+            JLabel confirmPasswordValidationLabel,
+            boolean showRequiredErrors
+    ) {
+        String currentPassword = new String(currentPasswordField.getPassword());
+        String newPassword = new String(newPasswordField.getPassword());
+        String confirmPassword = new String(confirmPasswordField.getPassword());
+        UiFactory.setValidationMessage(
+                currentPasswordValidationLabel,
+                currentPassword.isBlank() ? (showRequiredErrors ? "Current password is required." : "") : "",
+                currentPassword.isBlank() && showRequiredErrors
+        );
+        boolean invalidNewPassword = newPassword.length() < 6 || newPassword.length() > 20;
+        UiFactory.setValidationMessage(
+                newPasswordValidationLabel,
+                newPassword.isBlank() ? (showRequiredErrors ? "New password is required." : "6 to 20 characters") : (invalidNewPassword ? "New password must be 6 to 20 characters." : ""),
+                invalidNewPassword && (!newPassword.isBlank() || showRequiredErrors)
+        );
+        boolean mismatch = !confirmPassword.isBlank() && !newPassword.equals(confirmPassword);
+        UiFactory.setValidationMessage(
+                confirmPasswordValidationLabel,
+                confirmPassword.isBlank() ? (showRequiredErrors ? "Confirm your new password." : "") : (mismatch ? "New passwords must match." : ""),
+                mismatch || (confirmPassword.isBlank() && showRequiredErrors)
+        );
     }
 
     private void showCard(String card) {
